@@ -332,6 +332,7 @@ interface IERC20 {
     function updateLockStatus(address _account,bool _status) external;
     function burn(uint256 amount) external;
     function transferFrom(address sender, address recipient, uint256 amount) external returns (bool);
+    function balanceOf(address account) external returns  (uint256);
 }
 
 contract VSCSmartLock is Ownable, Pausable {
@@ -348,12 +349,12 @@ contract VSCSmartLock is Ownable, Pausable {
         bool released;
     }
 
-    modifier isContractCheck(address _user) {
-        require(!isContract(_user), "Invalid address");
+    modifier isContractCheck() {
+       require((!_isContract(msg.sender)) && (msg.sender == tx.origin), "contract not allowed");
         _;
     }
 
-    function isContract(address _account) public view returns(bool) {
+    function _isContract(address _account) public view returns(bool) {
         uint32 size;
         assembly {
             size:= extcodesize(_account)
@@ -377,7 +378,7 @@ contract VSCSmartLock is Ownable, Pausable {
         deposit();
     }
 
-    function deposit() public payable whenNotPaused isContractCheck(msg.sender) {
+    function deposit() public payable whenNotPaused isContractCheck {
      uint256 _depositTime = block.timestamp;
      uint256 _expireTime = (block.timestamp).add(LockPeriod);
     Users memory newuser =  Users(_msgSender(),_depositTime,_expireTime,msg.value,false);
@@ -392,13 +393,11 @@ contract VSCSmartLock is Ownable, Pausable {
         LockPeriod = _seconds;
     }
 
-    function retriveFund(uint256 _amount) public onlyOwner {
-        payable(msg.sender).transfer(_amount);
-    }
-
-    function withdraw(uint256 _id) public whenNotPaused isContractCheck(msg.sender){
+    function withdraw(uint256 _id) public whenNotPaused isContractCheck {
+        require(count[_msgSender()] >= _id,"The ID is wrong");   // checking the ID valid or not
         require(user[_msgSender()][_id].expireTime < block.timestamp, "This ID not expired");
         require(user[_msgSender()][_id].released==false,"Already withdraw the ID");
+        require(token.balanceOf(_msgSender()) >= user[_msgSender()][_id].amount,"Insufficient token amount"); // checking the user token balance
         token.updateLockStatus(_msgSender(),false);
         user[_msgSender()][_id].released=true;
         payable(_msgSender()).transfer(user[_msgSender()][_id].amount);
@@ -406,9 +405,5 @@ contract VSCSmartLock is Ownable, Pausable {
         token.burn(user[_msgSender()][_id].amount);
         emit lockeventOUT(_msgSender(),user[_msgSender()][_id].amount,block.timestamp);
     }
-
-
-
-
 
 }
